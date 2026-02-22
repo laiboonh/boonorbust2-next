@@ -15,8 +15,8 @@ model User {
   provider      String?
   uid           String?
   currency      String    @default("SGD")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("inserted_at")
+  updatedAt DateTime @updatedAt     @map("updated_at")
 
   accounts              Account[]
   sessions              Session[]
