@@ -142,6 +142,17 @@ export async function getLatestPositions(userId: string): Promise<PositionWithAs
     ORDER BY pt.transaction_date DESC
   `;
 
+  console.log("[positions] rawPositions count:", rawPositions.length);
+  if (rawPositions.length > 0) {
+    const sample = rawPositions[0];
+    console.log("[positions] sample row:", {
+      asset_id: sample.asset_id,
+      quantity_on_hand: sample.quantity_on_hand,
+      average_price_amount: sample.average_price_amount,
+      amount_on_hand_amount: sample.amount_on_hand_amount,
+    });
+  }
+
   const seen = new Set<number>();
   const latest: RawPosition[] = [];
   for (const pos of rawPositions) {
@@ -150,6 +161,8 @@ export async function getLatestPositions(userId: string): Promise<PositionWithAs
       latest.push(pos);
     }
   }
+
+  console.log("[positions] latest (qty>0) count:", latest.length);
 
   if (latest.length === 0) return [];
 
