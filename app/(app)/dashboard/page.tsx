@@ -8,6 +8,12 @@ import DashboardClient from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
 
+interface RawSnapshot {
+  snapshot_date: Date;
+  total_value_amount: unknown;
+  total_value_currency: string;
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -16,56 +22,47 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  // Fetch user currency preference
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { currency: true },
   });
   const userCurrency = user?.currency ?? "SGD";
 
-  // Get latest positions (includes asset + assetTags -> tag)
   const rawPositions = await getLatestPositions(userId);
 
-  // Convert each position's amounts to user currency
   const enrichedPositions = await Promise.all(
     rawPositions.map(async (pos) => {
       const assetCurrency = pos.amountOnHandCurrency;
       const avgPriceCurrency = pos.averagePriceCurrency;
       const assetPriceCurrency = pos.asset.priceCurrency ?? pos.asset.currency;
 
-      const quantityOnHand = parseDecimal(pos.quantityOnHand);
-      const avgPrice = parseDecimal(pos.averagePrice);
-      const currentAssetPrice = parseDecimal(pos.asset.price);
+      const quantityOnHand = pos.quantityOnHand;
+      const avgPrice = pos.averagePrice;
+      const currentAssetPrice = pos.asset.price ?? 0;
 
-      // Convert amountOnHand to user currency
       const convertedAmountOnHand = await convertAmount(
-        parseDecimal(pos.amountOnHand),
+        pos.amountOnHand,
         assetCurrency,
         userCurrency
       );
 
-      // Convert average price to user currency
       const convertedAvgPrice = await convertAmount(
         avgPrice,
         avgPriceCurrency,
         userCurrency
       );
 
-      // Convert current asset price to user currency
       const convertedCurrentPrice = await convertAmount(
         currentAssetPrice,
         assetPriceCurrency,
         userCurrency
       );
 
-      // Unrealized profit = (currentPrice - avgPrice) * quantityOnHand (all in user currency)
       const unrealizedProfit =
         (convertedCurrentPrice - convertedAvgPrice) * quantityOnHand;
 
-      // Current value = currentPrice * quantityOnHand
       const currentValue = convertedCurrentPrice * quantityOnHand;
 
-      // Tags for this asset scoped to this user
       const tags = pos.asset.assetTags
         .filter((at) => at.userId === userId)
         .map((at) => at.tag);
@@ -87,16 +84,13 @@ export default async function DashboardPage() {
     })
   );
 
-  // Sort by current value descending
   enrichedPositions.sort((a, b) => b.currentValue - a.currentValue);
 
-  // Total portfolio value
   const totalPortfolioValue = enrichedPositions.reduce(
     (sum, p) => sum + p.currentValue,
     0
   );
 
-  // Tag allocation: group by tag name, sum currentValue
   const tagAllocationMap = new Map<string, number>();
   for (const pos of enrichedPositions) {
     if (pos.tags.length === 0) {
@@ -105,7 +99,6 @@ export default async function DashboardPage() {
     } else {
       for (const tag of pos.tags) {
         const prev = tagAllocationMap.get(tag.name) ?? 0;
-        // Divide evenly across tags if multiple
         tagAllocationMap.set(
           tag.name,
           prev + pos.currentValue / pos.tags.length
@@ -117,59 +110,50 @@ export default async function DashboardPage() {
     ([name, value]) => ({ name, value })
   );
 
-  // Upcoming dividends: exDate within next 14 days
   const now = new Date();
   const in14Days = new Date(now);
   in14Days.setDate(in14Days.getDate() + 14);
 
   const upcomingDividends = await prisma.dividend.findMany({
-    where: {
-      exDate: { gte: now, lte: in14Days },
-    },
+    where: { exDate: { gte: now, lte: in14Days } },
     include: { asset: { select: { name: true, currency: true } } },
     orderBy: { exDate: "asc" },
   });
 
-  // Recent dividends: payDate within past 14 days
   const past14Days = new Date(now);
   past14Days.setDate(past14Days.getDate() - 14);
 
   const recentDividends = await prisma.dividend.findMany({
-    where: {
-      payDate: { gte: past14Days, lte: now },
-    },
+    where: { payDate: { gte: past14Days, lte: now } },
     include: { asset: { select: { name: true, currency: true } } },
     orderBy: { payDate: "desc" },
   });
 
-  // Portfolio snapshots: last 90 days
   const past90Days = new Date(now);
   past90Days.setDate(past90Days.getDate() - 90);
 
-  const snapshots = await prisma.portfolioSnapshot.findMany({
-    where: {
-      userId,
-      snapshotDate: { gte: past90Days },
-    },
-    orderBy: { snapshotDate: "asc" },
-    select: { snapshotDate: true, totalValue: true, currency: true },
-  });
+  const snapshots = await prisma.$queryRaw<RawSnapshot[]>`
+    SELECT
+      snapshot_date,
+      (total_value).amount         AS total_value_amount,
+      TRIM((total_value).currency) AS total_value_currency
+    FROM portfolio_snapshots
+    WHERE user_id = ${userId} AND snapshot_date >= ${past90Days}
+    ORDER BY snapshot_date ASC
+  `;
 
-  // Serialize snapshots for client (convert Decimal -> number, Date -> string)
   const serializedSnapshots = snapshots.map((s) => ({
-    date: formatDate(s.snapshotDate),
-    value: parseDecimal(s.totalValue),
-    currency: s.currency,
+    date: formatDate(s.snapshot_date),
+    value: parseDecimal(s.total_value_amount),
+    currency: s.total_value_currency,
   }));
 
-  // Serialize positions for client
   const serializedPositions = enrichedPositions.map((p) => ({
     ...p,
     priceUpdatedAt: p.priceUpdatedAt ? formatDate(p.priceUpdatedAt) : null,
     tags: p.tags.map((t) => ({ id: t.id, name: t.name })),
   }));
 
-  // Serialize dividends
   const serializedUpcoming = upcomingDividends.map((d) => ({
     id: d.id,
     assetName: d.asset.name,

@@ -26,38 +26,27 @@ export async function createTransaction(formData: FormData) {
   const transactionDate = new Date(formData.get("transactionDate") as string);
   const notes = (formData.get("notes") as string) || null;
 
-  const amount = action === "buy"
-    ? price * quantity + commission
-    : price * quantity - commission;
+  const amount =
+    action === "buy" ? price * quantity + commission : price * quantity - commission;
 
-  // Find or create asset
   let asset = await prisma.asset.findUnique({ where: { name: assetName } });
   if (!asset) {
     asset = await prisma.asset.create({
-      data: {
-        name: assetName,
-        currency,
-        priceCurrency: currency,
-      },
+      data: { name: assetName, currency, priceCurrency: currency },
     });
   }
 
-  await prisma.portfolioTransaction.create({
-    data: {
-      userId,
-      assetId: asset.id,
-      action,
-      quantity,
-      price,
-      priceCurrency: currency,
-      commission,
-      commissionCurrency: currency,
-      amount,
-      amountCurrency: currency,
-      transactionDate,
-      notes,
-    },
-  });
+  await prisma.$executeRaw`
+    INSERT INTO portfolio_transactions
+      (user_id, asset_id, action, quantity, price, commission, amount, transaction_date, notes, updated_at)
+    VALUES (
+      ${userId}, ${asset.id}, ${action}, ${quantity},
+      ROW(${price}::numeric, ${currency}::bpchar)::money_with_currency,
+      ROW(${commission}::numeric, ${currency}::bpchar)::money_with_currency,
+      ROW(${amount}::numeric, ${currency}::bpchar)::money_with_currency,
+      ${transactionDate}, ${notes}, NOW()
+    )
+  `;
 
   await recalculatePositionsForAsset(asset.id, userId);
   revalidateAll();
@@ -77,40 +66,31 @@ export async function updateTransaction(id: number, formData: FormData) {
   const transactionDate = new Date(formData.get("transactionDate") as string);
   const notes = (formData.get("notes") as string) || null;
 
-  const amount = action === "buy"
-    ? price * quantity + commission
-    : price * quantity - commission;
+  const amount =
+    action === "buy" ? price * quantity + commission : price * quantity - commission;
 
-  // Find or create asset
   let asset = await prisma.asset.findUnique({ where: { name: assetName } });
   if (!asset) {
     asset = await prisma.asset.create({
-      data: {
-        name: assetName,
-        currency,
-        priceCurrency: currency,
-      },
+      data: { name: assetName, currency, priceCurrency: currency },
     });
   }
 
-  const tx = await prisma.portfolioTransaction.update({
-    where: { id, userId },
-    data: {
-      assetId: asset.id,
-      action,
-      quantity,
-      price,
-      priceCurrency: currency,
-      commission,
-      commissionCurrency: currency,
-      amount,
-      amountCurrency: currency,
-      transactionDate,
-      notes,
-    },
-  });
+  await prisma.$executeRaw`
+    UPDATE portfolio_transactions SET
+      asset_id         = ${asset.id},
+      action           = ${action},
+      quantity         = ${quantity},
+      price            = ROW(${price}::numeric, ${currency}::bpchar)::money_with_currency,
+      commission       = ROW(${commission}::numeric, ${currency}::bpchar)::money_with_currency,
+      amount           = ROW(${amount}::numeric, ${currency}::bpchar)::money_with_currency,
+      transaction_date = ${transactionDate},
+      notes            = ${notes},
+      updated_at       = NOW()
+    WHERE id = ${id} AND user_id = ${userId}
+  `;
 
-  await recalculatePositionsForAsset(tx.assetId, userId);
+  await recalculatePositionsForAsset(asset.id, userId);
   revalidateAll();
 }
 
@@ -119,12 +99,10 @@ export async function deleteTransaction(id: number) {
   if (!session?.user?.id) throw new Error("Unauthenticated");
   const userId = session.user.id;
 
-  const tx = await prisma.portfolioTransaction.findUnique({
-    where: { id, userId },
-  });
+  const tx = await prisma.portfolioTransaction.findFirst({ where: { id, userId } });
   if (!tx) throw new Error("Transaction not found");
 
-  await prisma.portfolioTransaction.delete({ where: { id, userId } });
+  await prisma.portfolioTransaction.delete({ where: { id } });
   await recalculatePositionsForAsset(tx.assetId, userId);
   revalidateAll();
 }
@@ -151,7 +129,6 @@ export async function importCSV(
   if (!file) return { success: 0, errors: ["No file provided"] };
 
   const text = await file.text();
-
   const parsed = Papa.parse<CsvRow>(text, {
     header: true,
     skipEmptyLines: true,
@@ -163,14 +140,11 @@ export async function importCSV(
 
   for (let i = 0; i < parsed.data.length; i++) {
     const row = parsed.data[i];
-    const rowNum = i + 2; // 1-indexed, +1 for header
+    const rowNum = i + 2;
 
     try {
       const assetName = row.Stock?.trim();
-      if (!assetName) {
-        errors.push(`Row ${rowNum}: Missing Stock name`);
-        continue;
-      }
+      if (!assetName) { errors.push(`Row ${rowNum}: Missing Stock name`); continue; }
 
       const action = (row.Action?.trim() ?? "").toLowerCase();
       if (action !== "buy" && action !== "sell") {
@@ -195,48 +169,34 @@ export async function importCSV(
       const notes = row.Notes?.trim() || null;
 
       const rawDate = row.Date?.trim();
-      if (!rawDate) {
-        errors.push(`Row ${rowNum}: Missing Date`);
-        continue;
-      }
+      if (!rawDate) { errors.push(`Row ${rowNum}: Missing Date`); continue; }
       const transactionDate = new Date(rawDate);
       if (isNaN(transactionDate.getTime())) {
         errors.push(`Row ${rowNum}: Invalid date "${rawDate}"`);
         continue;
       }
 
-      const amount = action === "buy"
-        ? price * quantity + commission
-        : price * quantity - commission;
+      const amount =
+        action === "buy" ? price * quantity + commission : price * quantity - commission;
 
-      // Find or create asset
       let asset = await prisma.asset.findUnique({ where: { name: assetName } });
       if (!asset) {
         asset = await prisma.asset.create({
-          data: {
-            name: assetName,
-            currency,
-            priceCurrency: currency,
-          },
+          data: { name: assetName, currency, priceCurrency: currency },
         });
       }
 
-      await prisma.portfolioTransaction.create({
-        data: {
-          userId,
-          assetId: asset.id,
-          action,
-          quantity,
-          price,
-          priceCurrency: currency,
-          commission,
-          commissionCurrency: currency,
-          amount,
-          amountCurrency: currency,
-          transactionDate,
-          notes,
-        },
-      });
+      await prisma.$executeRaw`
+        INSERT INTO portfolio_transactions
+          (user_id, asset_id, action, quantity, price, commission, amount, transaction_date, notes, updated_at)
+        VALUES (
+          ${userId}, ${asset.id}, ${action}, ${quantity},
+          ROW(${price}::numeric, ${currency}::bpchar)::money_with_currency,
+          ROW(${commission}::numeric, ${currency}::bpchar)::money_with_currency,
+          ROW(${amount}::numeric, ${currency}::bpchar)::money_with_currency,
+          ${transactionDate}, ${notes}, NOW()
+        )
+      `;
 
       await recalculatePositionsForAsset(asset.id, userId);
       success++;

@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getLatestPositions } from "@/lib/positions";
 import { convertAmount } from "@/lib/exchange-rates";
-import { parseDecimal } from "@/lib/utils";
 
 /**
  * POST /api/snapshots
@@ -24,9 +23,8 @@ export async function POST() {
   const positions = await getLatestPositions(session.user.id);
   let totalValue = 0;
   for (const pos of positions) {
-    const amount = parseDecimal(pos.amountOnHand);
     const converted = await convertAmount(
-      amount,
+      pos.amountOnHand,
       pos.amountOnHandCurrency,
       targetCurrency
     );
@@ -36,24 +34,18 @@ export async function POST() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const snapshot = await prisma.portfolioSnapshot.upsert({
-    where: {
-      userId_snapshotDate: {
-        userId: session.user.id,
-        snapshotDate: today,
-      },
-    },
-    create: {
-      userId: session.user.id,
-      snapshotDate: today,
-      totalValue,
-      currency: targetCurrency,
-    },
-    update: {
-      totalValue,
-      currency: targetCurrency,
-    },
-  });
+  await prisma.$executeRaw`
+    INSERT INTO portfolio_snapshots (user_id, snapshot_date, total_value, updated_at)
+    VALUES (
+      ${session.user.id},
+      ${today},
+      ROW(${totalValue}::numeric, ${targetCurrency}::bpchar)::money_with_currency,
+      NOW()
+    )
+    ON CONFLICT (user_id, snapshot_date) DO UPDATE SET
+      total_value = ROW(${totalValue}::numeric, ${targetCurrency}::bpchar)::money_with_currency,
+      updated_at  = NOW()
+  `;
 
-  return NextResponse.json(snapshot);
+  return NextResponse.json({ ok: true });
 }
