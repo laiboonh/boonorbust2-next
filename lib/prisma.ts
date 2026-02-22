@@ -9,7 +9,7 @@ function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
   const adapter = new PrismaPg({
     connectionString,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+    ssl: process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : undefined,
   });
   return new PrismaClient({
     adapter,
