@@ -15,8 +15,8 @@ model User {
   provider      String?
   uid           String?
   currency      String    @default("SGD")
-  createdAt DateTime @default(now()) @map("inserted_at")
-  updatedAt DateTime @updatedAt     @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("inserted_at")
+  updatedAt     DateTime  @updatedAt      @map("updated_at")
 
   accounts              Account[]
   sessions              Session[]
@@ -66,17 +66,17 @@ model Session {
 model Asset {
   id                     Int       @id @default(autoincrement())
   name                   String    @unique
-  priceUrl               String?
+  priceUrl               String?   @map("price_url")
   price                  Decimal?  @db.Decimal(15, 4)
-  priceCurrency          String?
+  priceCurrency          String?   @map("price_currency")
   currency               String
-  distributesDividends   Boolean   @default(false)
-  dividendUrl            String?
-  dividendWithholdingTax Decimal?  @db.Decimal(5, 4)
-  priceUpdatedAt         DateTime?
-  dividendUpdatedAt      DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  distributesDividends   Boolean   @default(false) @map("distributes_dividends")
+  dividendUrl            String?   @map("dividend_url")
+  dividendWithholdingTax Decimal?  @db.Decimal(5, 4) @map("dividend_withholding_tax")
+  priceUpdatedAt         DateTime? @map("price_updated_at")
+  dividendUpdatedAt      DateTime? @map("dividend_updated_at")
+  createdAt              DateTime  @default(now()) @map("inserted_at")
+  updatedAt              DateTime  @updatedAt      @map("updated_at")
 
   assetTags             AssetTag[]
   dividends             Dividend[]
@@ -90,9 +90,9 @@ model Asset {
 model Tag {
   id        Int      @id @default(autoincrement())
   name      String
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("inserted_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   assetTags     AssetTag[]
@@ -104,11 +104,11 @@ model Tag {
 
 model AssetTag {
   id        Int      @id @default(autoincrement())
-  assetId   Int
-  tagId     Int
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  assetId   Int      @map("asset_id")
+  tagId     Int      @map("tag_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("inserted_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
 
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
   tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
@@ -122,9 +122,9 @@ model Portfolio {
   id          Int      @id @default(autoincrement())
   name        String
   description String?  @db.Text
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("inserted_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   portfolioTags PortfolioTag[]
@@ -135,10 +135,10 @@ model Portfolio {
 
 model PortfolioTag {
   id          Int      @id @default(autoincrement())
-  portfolioId Int
-  tagId       Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  portfolioId Int      @map("portfolio_id")
+  tagId       Int      @map("tag_id")
+  createdAt   DateTime @default(now()) @map("inserted_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
@@ -148,20 +148,20 @@ model PortfolioTag {
 
 model PortfolioTransaction {
   id                 Int      @id @default(autoincrement())
-  userId             String
-  assetId            Int
+  userId             String   @map("user_id")
+  assetId            Int      @map("asset_id")
   action             String
   quantity           Decimal  @db.Decimal(15, 6)
   price              Decimal  @db.Decimal(15, 4)
-  priceCurrency      String
+  priceCurrency      String   @map("price_currency")
   commission         Decimal  @db.Decimal(15, 4)
-  commissionCurrency String
+  commissionCurrency String   @map("commission_currency")
   amount             Decimal  @db.Decimal(15, 4)
-  amountCurrency     String
-  transactionDate    DateTime
+  amountCurrency     String   @map("amount_currency")
+  transactionDate    DateTime @map("transaction_date")
   notes              String?  @db.Text
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now()) @map("inserted_at")
+  updatedAt          DateTime @updatedAt      @map("updated_at")
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset             Asset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -173,16 +173,16 @@ model PortfolioTransaction {
 
 model PortfolioPosition {
   id                     Int      @id @default(autoincrement())
-  userId                 String
-  assetId                Int
-  portfolioTransactionId Int      @unique
-  averagePrice           Decimal  @db.Decimal(15, 4)
-  averagePriceCurrency   String
-  quantityOnHand         Decimal  @db.Decimal(15, 6)
-  amountOnHand           Decimal  @db.Decimal(15, 4)
-  amountOnHandCurrency   String
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  userId                 String   @map("user_id")
+  assetId                Int      @map("asset_id")
+  portfolioTransactionId Int      @unique @map("portfolio_transaction_id")
+  averagePrice           Decimal  @db.Decimal(15, 4) @map("average_price")
+  averagePriceCurrency   String   @map("average_price_currency")
+  quantityOnHand         Decimal  @db.Decimal(15, 6) @map("quantity_on_hand")
+  amountOnHand           Decimal  @db.Decimal(15, 4) @map("amount_on_hand")
+  amountOnHandCurrency   String   @map("amount_on_hand_currency")
+  createdAt              DateTime @default(now()) @map("inserted_at")
+  updatedAt              DateTime @updatedAt      @map("updated_at")
 
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset                Asset                @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -193,14 +193,14 @@ model PortfolioPosition {
 
 model RealizedProfit {
   id                     Int      @id @default(autoincrement())
-  userId                 String
-  assetId                Int
-  portfolioTransactionId Int?     @unique
-  dividendId             Int?
+  userId                 String   @map("user_id")
+  assetId                Int      @map("asset_id")
+  portfolioTransactionId Int?     @unique @map("portfolio_transaction_id")
+  dividendId             Int?     @map("dividend_id")
   amount                 Decimal  @db.Decimal(15, 4)
-  amountCurrency         String
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  amountCurrency         String   @map("amount_currency")
+  createdAt              DateTime @default(now()) @map("inserted_at")
+  updatedAt              DateTime @updatedAt      @map("updated_at")
 
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset                Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -212,13 +212,13 @@ model RealizedProfit {
 
 model Dividend {
   id        Int       @id @default(autoincrement())
-  assetId   Int
-  exDate    DateTime  @db.Date
-  payDate   DateTime? @db.Date
+  assetId   Int       @map("asset_id")
+  exDate    DateTime  @db.Date @map("ex_date")
+  payDate   DateTime? @db.Date @map("pay_date")
   value     Decimal   @db.Decimal(15, 4)
   currency  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now()) @map("inserted_at")
+  updatedAt DateTime  @updatedAt      @map("updated_at")
 
   asset           Asset            @relation(fields: [assetId], references: [id], onDelete: Cascade)
   realizedProfits RealizedProfit[]
@@ -229,12 +229,12 @@ model Dividend {
 
 model PortfolioSnapshot {
   id           Int      @id @default(autoincrement())
-  userId       String
-  snapshotDate DateTime @db.Date
-  totalValue   Decimal  @db.Decimal(15, 4)
+  userId       String   @map("user_id")
+  snapshotDate DateTime @db.Date @map("snapshot_date")
+  totalValue   Decimal  @db.Decimal(15, 4) @map("total_value")
   currency     String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now()) @map("inserted_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
