@@ -147,21 +147,18 @@ model PortfolioTag {
 }
 
 model PortfolioTransaction {
-  id                 Int      @id @default(autoincrement())
-  userId             String   @map("user_id")
-  assetId            Int      @map("asset_id")
-  action             String
-  quantity           Decimal  @db.Decimal(15, 6)
-  price              Decimal  @db.Decimal(15, 4)
-  priceCurrency      String   @map("price_currency")
-  commission         Decimal  @db.Decimal(15, 4)
-  commissionCurrency String   @map("commission_currency")
-  amount             Decimal  @db.Decimal(15, 4)
-  amountCurrency     String   @map("amount_currency")
-  transactionDate    DateTime @map("transaction_date")
-  notes              String?  @db.Text
-  createdAt          DateTime @default(now()) @map("inserted_at")
-  updatedAt          DateTime @updatedAt      @map("updated_at")
+  id              Int                            @id @default(autoincrement())
+  userId          String                         @map("user_id")
+  assetId         Int                            @map("asset_id")
+  action          String
+  quantity        Decimal                        @db.Decimal(15, 6)
+  price           Unsupported("money_with_currency")
+  commission      Unsupported("money_with_currency")
+  amount          Unsupported("money_with_currency")
+  transactionDate DateTime                       @map("transaction_date")
+  notes           String?                        @db.Text
+  createdAt       DateTime                       @default(now()) @map("inserted_at")
+  updatedAt       DateTime                       @updatedAt      @map("updated_at")
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset             Asset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -172,17 +169,15 @@ model PortfolioTransaction {
 }
 
 model PortfolioPosition {
-  id                     Int      @id @default(autoincrement())
-  userId                 String   @map("user_id")
-  assetId                Int      @map("asset_id")
-  portfolioTransactionId Int      @unique @map("portfolio_transaction_id")
-  averagePrice           Decimal  @db.Decimal(15, 4) @map("average_price")
-  averagePriceCurrency   String   @map("average_price_currency")
-  quantityOnHand         Decimal  @db.Decimal(15, 6) @map("quantity_on_hand")
-  amountOnHand           Decimal  @db.Decimal(15, 4) @map("amount_on_hand")
-  amountOnHandCurrency   String   @map("amount_on_hand_currency")
-  createdAt              DateTime @default(now()) @map("inserted_at")
-  updatedAt              DateTime @updatedAt      @map("updated_at")
+  id                     Int                            @id @default(autoincrement())
+  userId                 String                         @map("user_id")
+  assetId                Int                            @map("asset_id")
+  portfolioTransactionId Int                            @unique @map("portfolio_transaction_id")
+  averagePrice           Unsupported("money_with_currency") @map("average_price")
+  quantityOnHand         Decimal                        @db.Decimal(15, 6) @map("quantity_on_hand")
+  amountOnHand           Unsupported("money_with_currency") @map("amount_on_hand")
+  createdAt              DateTime                       @default(now()) @map("inserted_at")
+  updatedAt              DateTime                       @updatedAt      @map("updated_at")
 
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset                Asset                @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -192,15 +187,14 @@ model PortfolioPosition {
 }
 
 model RealizedProfit {
-  id                     Int      @id @default(autoincrement())
-  userId                 String   @map("user_id")
-  assetId                Int      @map("asset_id")
-  portfolioTransactionId Int?     @unique @map("portfolio_transaction_id")
-  dividendId             Int?     @map("dividend_id")
-  amount                 Decimal  @db.Decimal(15, 4)
-  amountCurrency         String   @map("amount_currency")
-  createdAt              DateTime @default(now()) @map("inserted_at")
-  updatedAt              DateTime @updatedAt      @map("updated_at")
+  id                     Int                            @id @default(autoincrement())
+  userId                 String                         @map("user_id")
+  assetId                Int                            @map("asset_id")
+  portfolioTransactionId Int?                           @unique @map("portfolio_transaction_id")
+  dividendId             Int?                           @map("dividend_id")
+  amount                 Unsupported("money_with_currency")
+  createdAt              DateTime                       @default(now()) @map("inserted_at")
+  updatedAt              DateTime                       @updatedAt      @map("updated_at")
 
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset                Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -228,13 +222,12 @@ model Dividend {
 }
 
 model PortfolioSnapshot {
-  id           Int      @id @default(autoincrement())
-  userId       String   @map("user_id")
-  snapshotDate DateTime @db.Date @map("snapshot_date")
-  totalValue   Decimal  @db.Decimal(15, 4) @map("total_value")
-  currency     String
-  createdAt    DateTime @default(now()) @map("inserted_at")
-  updatedAt    DateTime @updatedAt      @map("updated_at")
+  id           Int                            @id @default(autoincrement())
+  userId       String                         @map("user_id")
+  snapshotDate DateTime                       @db.Date @map("snapshot_date")
+  totalValue   Unsupported("money_with_currency") @map("total_value")
+  createdAt    DateTime                       @default(now()) @map("inserted_at")
+  updatedAt    DateTime                       @updatedAt      @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
