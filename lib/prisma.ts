@@ -7,16 +7,13 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
   const ca = process.env.DB_CA_CERT;
 
-  if (process.env.NODE_ENV === "production" && !ca) {
-    console.warn("DB_CA_CERT is not set — SSL will fail if the server uses a self-signed certificate");
-  }
-
   const pool = new Pool({
-    connectionString,
-    ssl: ca ? { ca: ca.replace(/\\n/g, "\n") } : undefined,
+    connectionString: process.env.DATABASE_URL,
+    ssl: ca
+      ? { rejectUnauthorized: true, ca: ca.replace(/\\n/g, "\n") }
+      : { rejectUnauthorized: false },
   });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({
