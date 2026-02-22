@@ -16,7 +16,7 @@ function createPrismaClient() {
 
   const pool = new Pool({
     connectionString,
-    ssl: ca ? { ca } : undefined,
+    ssl: ca ? { ca: ca.replace(/\\n/g, "\n") } : undefined,
   });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({
