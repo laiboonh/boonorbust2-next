@@ -153,7 +153,7 @@ export async function getLatestPositions(userId: string): Promise<PositionWithAs
 
   if (latest.length === 0) return [];
 
-  const assetIds = latest.map((p) => p.asset_id);
+  const assetIds = latest.map((p) => Number(p.asset_id));
   const assets = await prisma.asset.findMany({
     where: { id: { in: assetIds } },
     include: { assetTags: { include: { tag: true } } },
@@ -165,8 +165,8 @@ export async function getLatestPositions(userId: string): Promise<PositionWithAs
       const asset = assetMap.get(pos.asset_id);
       if (!asset) return null;
       return {
-        id: pos.id,
-        assetId: pos.asset_id,
+        id: Number(pos.id),
+        assetId: Number(pos.asset_id),
         amountOnHand: parseDecimal(pos.amount_on_hand_amount),
         amountOnHandCurrency: pos.amount_on_hand_currency,
         averagePrice: parseDecimal(pos.average_price_amount),
