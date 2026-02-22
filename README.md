@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BoonOrBust — Next.js Edition
 
-## Getting Started
+A personal portfolio & dividend investment tracker. Built with Next.js 14 App Router for deployment on Vercel.
 
-First, run the development server:
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router, Server Components, Server Actions)
+- **Database**: PostgreSQL via Prisma ORM v7
+- **Auth**: NextAuth.js v5 with Google OAuth
+- **Styling**: Tailwind CSS v4 (mobile-first, emerald theme)
+- **Charts**: Recharts (donut chart for tag allocation)
+- **CSV Import**: Papaparse
+
+## Features
+
+- **Dashboard** — Portfolio value, tag allocation donut chart, positions list with unrealized P&L, upcoming/recent dividends
+- **Assets** — CRUD with price URL / dividend URL config, tag management per asset, price fetching from AlphaVantage/Marketstack
+- **Transactions** — Buy/sell tracking, pagination, CSV bulk import
+- **Positions** — Running average cost basis, transaction history per asset in a modal
+- **Portfolios** — Group tags into named portfolios
+- **Exchange Rates** — Auto-convert positions to your preferred currency (1hr cache)
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Configure environment variables
+
+```bash
+cp .env.example .env
+# Fill in your values
+```
+
+Required:
+- `DATABASE_URL` — PostgreSQL connection string
+- `AUTH_SECRET` — Random secret: `openssl rand -base64 32`
+- `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` — From Google Cloud Console
+
+Optional (for price/dividend fetching):
+- `EXCHANGE_RATE_API_KEY` — exchangerate-api.com
+- `ALPHAVANTAGE_API_KEY` — alphavantage.co
+- `DIVIDEND_API_KEY` — eodhd.com
+
+### 3. Set up the database
+
+```bash
+npm run db:push      # Apply schema directly (dev)
+# OR
+npm run db:migrate   # Create migration files (prod)
+```
+
+### 4. Run development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploying to Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Push to GitHub and import in Vercel
+2. Add a PostgreSQL database (Vercel Postgres, Supabase, or Neon)
+3. Set all environment variables in Vercel dashboard
+4. Deploy — `prisma generate` runs automatically before build
 
-## Learn More
+## Google OAuth Setup
 
-To learn more about Next.js, take a look at the following resources:
+1. Create OAuth 2.0 Client ID in Google Cloud Console
+2. Add authorized redirect URIs:
+   - Production: `https://your-domain.com/api/auth/callback/google`
+   - Local dev: `http://localhost:3000/api/auth/callback/google`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## CSV Import Format
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+Stock,Action,Quantity,Price,Commission,Date,Currency,Notes
+AAPL,buy,100,150.50,25.00,2024-01-15,USD,Initial buy
+ES3.SI,buy,1000,3.25,10.00,2024-02-01,SGD,
+AAPL,sell,50,180.00,15.00,2024-06-01,USD,Partial exit
+```
 
-## Deploy on Vercel
+## Project Structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+app/
+  page.tsx                    Landing (sign in with Google)
+  (app)/
+    layout.tsx                Authenticated shell: header + bottom nav
+    dashboard/page.tsx        Portfolio overview + charts
+    assets/page.tsx           Asset CRUD + tag management
+    transactions/page.tsx     Buy/sell log + CSV import
+    positions/page.tsx        Current holdings + history modal
+    portfolios/page.tsx       Portfolio groups
+  api/
+    auth/[...nextauth]/       NextAuth handler
+    assets/fetch-price/       Trigger price refresh
+    snapshots/                Save daily portfolio snapshot
+    user/currency/            Update display currency
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+lib/
+  auth.ts                     NextAuth config (Google provider)
+  prisma.ts                   Prisma singleton
+  positions.ts                Running avg cost basis algorithm
+  exchange-rates.ts           FX conversion with 1hr in-memory cache
+  price-fetcher.ts            Price APIs (AlphaVantage, Marketstack)
+  utils.ts                    Format helpers
+
+prisma/
+  schema.prisma               Full database schema
+```

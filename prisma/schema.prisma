@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  provider      String?
+  uid           String?
+  currency      String    @default("SGD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  tags                  Tag[]
+  portfolios            Portfolio[]
+  portfolioTransactions PortfolioTransaction[]
+  portfolioPositions    PortfolioPosition[]
+  realizedProfits       RealizedProfit[]
+  assetTags             AssetTag[]
+  portfolioSnapshots    PortfolioSnapshot[]
+
+  @@unique([provider, uid])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Asset {
+  id                     Int       @id @default(autoincrement())
+  name                   String    @unique
+  priceUrl               String?
+  price                  Decimal?  @db.Decimal(15, 4)
+  priceCurrency          String?
+  currency               String
+  distributesDividends   Boolean   @default(false)
+  dividendUrl            String?
+  dividendWithholdingTax Decimal?  @db.Decimal(5, 4)
+  priceUpdatedAt         DateTime?
+  dividendUpdatedAt      DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  assetTags             AssetTag[]
+  dividends             Dividend[]
+  portfolioTransactions PortfolioTransaction[]
+  portfolioPositions    PortfolioPosition[]
+  realizedProfits       RealizedProfit[]
+
+  @@map("assets")
+}
+
+model Tag {
+  id        Int      @id @default(autoincrement())
+  name      String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetTags     AssetTag[]
+  portfolioTags PortfolioTag[]
+
+  @@unique([userId, name])
+  @@map("tags")
+}
+
+model AssetTag {
+  id        Int      @id @default(autoincrement())
+  assetId   Int
+  tagId     Int
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, tagId, userId])
+  @@map("asset_tags")
+}
+
+model Portfolio {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?  @db.Text
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolioTags PortfolioTag[]
+
+  @@unique([userId, name])
+  @@map("portfolios")
+}
+
+model PortfolioTag {
+  id          Int      @id @default(autoincrement())
+  portfolioId Int
+  tagId       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_tags")
+}
+
+model PortfolioTransaction {
+  id                 Int      @id @default(autoincrement())
+  userId             String
+  assetId            Int
+  action             String
+  quantity           Decimal  @db.Decimal(15, 6)
+  price              Decimal  @db.Decimal(15, 4)
+  priceCurrency      String
+  commission         Decimal  @db.Decimal(15, 4)
+  commissionCurrency String
+  amount             Decimal  @db.Decimal(15, 4)
+  amountCurrency     String
+  transactionDate    DateTime
+  notes              String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset             Asset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  portfolioPosition PortfolioPosition?
+  realizedProfit    RealizedProfit?
+
+  @@map("portfolio_transactions")
+}
+
+model PortfolioPosition {
+  id                     Int      @id @default(autoincrement())
+  userId                 String
+  assetId                Int
+  portfolioTransactionId Int      @unique
+  averagePrice           Decimal  @db.Decimal(15, 4)
+  averagePriceCurrency   String
+  quantityOnHand         Decimal  @db.Decimal(15, 6)
+  amountOnHand           Decimal  @db.Decimal(15, 4)
+  amountOnHandCurrency   String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset                Asset                @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  portfolioTransaction PortfolioTransaction @relation(fields: [portfolioTransactionId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_positions")
+}
+
+model RealizedProfit {
+  id                     Int      @id @default(autoincrement())
+  userId                 String
+  assetId                Int
+  portfolioTransactionId Int?     @unique
+  dividendId             Int?
+  amount                 Decimal  @db.Decimal(15, 4)
+  amountCurrency         String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset                Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  portfolioTransaction PortfolioTransaction? @relation(fields: [portfolioTransactionId], references: [id], onDelete: Cascade)
+  dividend             Dividend?             @relation(fields: [dividendId], references: [id], onDelete: SetNull)
+
+  @@map("realized_profits")
+}
+
+model Dividend {
+  id        Int       @id @default(autoincrement())
+  assetId   Int
+  exDate    DateTime  @db.Date
+  payDate   DateTime? @db.Date
+  value     Decimal   @db.Decimal(15, 4)
+  currency  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  asset           Asset            @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  realizedProfits RealizedProfit[]
+
+  @@unique([assetId, exDate])
+  @@map("dividends")
+}
+
+model PortfolioSnapshot {
+  id           Int      @id @default(autoincrement())
+  userId       String
+  snapshotDate DateTime @db.Date
+  totalValue   Decimal  @db.Decimal(15, 4)
+  currency     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, snapshotDate])
+  @@map("portfolio_snapshots")
+}
