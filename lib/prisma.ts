@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -7,10 +8,17 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
-  const adapter = new PrismaPg({
+  const ca = process.env.DB_CA_CERT;
+
+  if (process.env.NODE_ENV === "production" && !ca) {
+    console.warn("DB_CA_CERT is not set — SSL will fail if the server uses a self-signed certificate");
+  }
+
+  const pool = new Pool({
     connectionString,
-    ssl: process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : undefined,
+    ssl: ca ? { ca } : undefined,
   });
+  const adapter = new PrismaPg(pool);
   return new PrismaClient({
     adapter,
     log:
