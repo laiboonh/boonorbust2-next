@@ -11,6 +11,9 @@ function createPrismaClient() {
 
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    // In serverless each instance should hold at most 1 connection
+    // to avoid exhausting PostgreSQL's connection limit across many concurrent invocations.
+    max: 1,
     ssl: ca
       ? { rejectUnauthorized: true, ca: ca.replace(/\\n/g, "\n") }
       : { rejectUnauthorized: false },
@@ -27,4 +30,6 @@ function createPrismaClient() {
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Keep the singleton in all environments — in serverless, the global persists
+// across warm invocations of the same instance, reducing connection churn.
+globalForPrisma.prisma = prisma;
