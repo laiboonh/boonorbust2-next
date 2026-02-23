@@ -6,6 +6,14 @@ import {
   Cell,
   Tooltip,
   ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Legend,
+  AreaChart,
+  Area,
 } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 
@@ -31,9 +39,26 @@ interface Position {
   priceUpdatedAt: string | null;
 }
 
-interface TagAllocation {
+interface PortfolioChart {
+  id: number;
   name: string;
+  description: string | null;
+  chartData: Array<{ label: string; value: number }>;
+  colorIndex: number;
+}
+
+interface AllocationEntry {
+  label: string;
   value: number;
+  percentage: number;
+}
+
+interface DividendChartData {
+  labels: string[];
+  datasets: Array<{
+    label: string;
+    data: number[];
+  }>;
 }
 
 interface DividendEntry {
@@ -56,7 +81,9 @@ interface Props {
   positions: Position[];
   totalPortfolioValue: number;
   userCurrency: string;
-  tagAllocation: TagAllocation[];
+  portfolioCharts: PortfolioChart[];
+  investmentAllocation: AllocationEntry[];
+  dividendChartData: DividendChartData;
   upcomingDividends: DividendEntry[];
   recentDividends: DividendEntry[];
   snapshots: Snapshot[];
@@ -64,17 +91,18 @@ interface Props {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PIE_COLORS = [
-  "#059669", // emerald-600
-  "#34d399", // emerald-400
-  "#6ee7b7", // emerald-300
-  "#a7f3d0", // emerald-200
-  "#0d9488", // teal-600
-  "#2dd4bf", // teal-400
-  "#0ea5e9", // sky-500
-  "#60a5fa", // blue-400
-  "#a78bfa", // violet-400
-  "#f472b6", // pink-400
+// One color scheme per portfolio (rotates)
+const COLOR_SCHEMES = [
+  ["#059669", "#34d399", "#6ee7b7", "#a7f3d0", "#0d9488", "#2dd4bf", "#0ea5e9", "#60a5fa", "#a78bfa", "#f472b6"],
+  ["#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd", "#0891b2", "#22d3ee", "#059669", "#34d399", "#8b5cf6", "#c084fc"],
+  ["#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe", "#7c3aed", "#9333ea", "#ec4899", "#f472b6", "#f59e0b", "#fbbf24"],
+  ["#f59e0b", "#fbbf24", "#fcd34d", "#fde68a", "#d97706", "#b45309", "#ef4444", "#f87171", "#10b981", "#34d399"],
+  ["#ec4899", "#f472b6", "#f9a8d4", "#fbcfe8", "#db2777", "#be185d", "#8b5cf6", "#a78bfa", "#0ea5e9", "#38bdf8"],
+];
+
+const DIVIDEND_COLORS = [
+  "#059669", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ec4899",
+  "#0d9488", "#0891b2", "#7c3aed", "#d97706", "#db2777",
 ];
 
 // Deterministic color per tag name
@@ -135,20 +163,20 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-// ─── Donut chart with center label ────────────────────────────────────────────
+// ─── Portfolio pie chart (1 per portfolio) ────────────────────────────────────
 
-function AllocationChart({
+function PortfolioPieChart({
   data,
   currency,
+  colorIndex,
 }: {
-  data: TagAllocation[];
+  data: Array<{ label: string; value: number }>;
   currency: string;
+  colorIndex: number;
 }) {
-  if (data.length === 0) {
-    return <EmptyState message="No positions to chart." />;
-  }
-
+  const colors = COLOR_SCHEMES[colorIndex % COLOR_SCHEMES.length];
   const total = data.reduce((s, d) => s + d.value, 0);
+  const chartData = data.map((d) => ({ name: d.label, value: d.value }));
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -156,7 +184,7 @@ function AllocationChart({
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data}
+              data={chartData}
               cx="50%"
               cy="50%"
               innerRadius={60}
@@ -164,10 +192,10 @@ function AllocationChart({
               paddingAngle={2}
               dataKey="value"
             >
-              {data.map((entry, index) => (
+              {chartData.map((_, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={PIE_COLORS[index % PIE_COLORS.length]}
+                  fill={colors[index % colors.length]}
                 />
               ))}
             </Pie>
@@ -190,13 +218,13 @@ function AllocationChart({
 
       {/* Legend */}
       <div className="flex flex-wrap gap-2 justify-center">
-        {data.map((entry, index) => {
+        {chartData.map((entry, index) => {
           const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : "0";
           return (
             <div key={entry.name} className="flex items-center gap-1 text-xs">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                style={{ background: PIE_COLORS[index % PIE_COLORS.length] }}
+                style={{ background: colors[index % colors.length] }}
               />
               <span className="text-gray-700">
                 {entry.name}{" "}
@@ -206,6 +234,174 @@ function AllocationChart({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ─── Portfolio value over time (area chart) ───────────────────────────────────
+
+function PortfolioValueChart({
+  data,
+  currency,
+}: {
+  data: Snapshot[];
+  currency: string;
+}) {
+  if (data.length === 0) {
+    return <EmptyState message="No snapshot data yet." />;
+  }
+
+  return (
+    <div style={{ height: 220 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart
+          data={data}
+          margin={{ top: 4, right: 10, left: 0, bottom: 0 }}
+        >
+          <defs>
+            <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#059669" stopOpacity={0.2} />
+              <stop offset="95%" stopColor="#059669" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 9 }}
+            interval="preserveStartEnd"
+            tickLine={false}
+          />
+          <YAxis
+            tickFormatter={(v) => formatCurrency(v, currency)}
+            tick={{ fontSize: 9 }}
+            width={70}
+          />
+          <Tooltip
+            formatter={(value) => [
+              formatCurrency(Number(value), currency),
+              "Portfolio Value",
+            ]}
+          />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke="#059669"
+            strokeWidth={2}
+            fill="url(#portfolioGradient)"
+            dot={false}
+            activeDot={{ r: 4 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─── Investment allocation horizontal bar chart ───────────────────────────────
+
+function PositionsBarChart({
+  data,
+  currency,
+}: {
+  data: AllocationEntry[];
+  currency: string;
+}) {
+  if (data.length === 0) {
+    return <EmptyState message="No positions to chart." />;
+  }
+
+  const height = Math.max(150, Math.min(500, data.length * 48));
+
+  return (
+    <div style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 0, right: 40, left: 0, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis
+            type="number"
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}%`}
+            tick={{ fontSize: 10 }}
+          />
+          <YAxis
+            type="category"
+            dataKey="label"
+            width={100}
+            tick={{ fontSize: 10 }}
+          />
+          <Tooltip
+            formatter={(value, _, props) => {
+              const entry = props.payload as AllocationEntry;
+              return [
+                `${Number(value).toFixed(2)}% — ${formatCurrency(entry.value, currency)}`,
+                "Allocation",
+              ];
+            }}
+          />
+          <Bar dataKey="percentage" fill="#059669" radius={[0, 4, 4, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─── Dividend stacked bar chart ───────────────────────────────────────────────
+
+function DividendsBarChart({
+  data,
+  currency,
+}: {
+  data: DividendChartData;
+  currency: string;
+}) {
+  if (data.labels.length === 0) {
+    return <EmptyState message="No dividend income data yet." />;
+  }
+
+  // Transform to Recharts format: [{ month, Asset1: val, Asset2: val, ... }]
+  const chartData = data.labels.map((month, idx) => {
+    const row: Record<string, number | string> = { month };
+    for (const ds of data.datasets) {
+      row[ds.label] = ds.data[idx] ?? 0;
+    }
+    return row;
+  });
+
+  return (
+    <div style={{ height: 300 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={chartData}
+          margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+          <YAxis
+            tickFormatter={(v) => formatCurrency(v, currency)}
+            tick={{ fontSize: 10 }}
+            width={70}
+          />
+          <Tooltip
+            formatter={(value, name) => [
+              formatCurrency(Number(value), currency),
+              name as string,
+            ]}
+          />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          {data.datasets.map((ds, index) => (
+            <Bar
+              key={ds.label}
+              dataKey={ds.label}
+              stackId="a"
+              fill={DIVIDEND_COLORS[index % DIVIDEND_COLORS.length]}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -318,10 +514,12 @@ export default function DashboardClient({
   positions,
   totalPortfolioValue,
   userCurrency,
-  tagAllocation,
+  portfolioCharts,
+  investmentAllocation,
+  dividendChartData,
   upcomingDividends,
   recentDividends,
-  // snapshots available for future sparkline use
+  snapshots,
 }: Props) {
   return (
     <div className="px-4 py-5 space-y-6 max-w-lg mx-auto">
@@ -336,11 +534,56 @@ export default function DashboardClient({
         <p className="text-emerald-300 text-xs mt-1">{userCurrency}</p>
       </div>
 
-      {/* Allocation donut */}
+      {/* Per-portfolio pie charts */}
+      {portfolioCharts.length === 0 ? (
+        <section>
+          <SectionHeader title="Portfolios" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <EmptyState message="No portfolios yet. Create a portfolio and tag your assets to see breakdowns here." />
+          </div>
+        </section>
+      ) : (
+        portfolioCharts.map((portfolio) => (
+          <section key={portfolio.id}>
+            <SectionHeader title={portfolio.name} />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              {portfolio.description && (
+                <p className="text-xs text-gray-400 mb-4">
+                  {portfolio.description}
+                </p>
+              )}
+              <PortfolioPieChart
+                data={portfolio.chartData}
+                currency={userCurrency}
+                colorIndex={portfolio.colorIndex}
+              />
+            </div>
+          </section>
+        ))
+      )}
+
+      {/* Portfolio value over time */}
+      {snapshots.length > 0 && (
+        <section>
+          <SectionHeader title="Portfolio Value Over Time" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <p className="text-xs text-gray-400 mb-3">Last 90 days</p>
+            <PortfolioValueChart data={snapshots} currency={userCurrency} />
+          </div>
+        </section>
+      )}
+
+      {/* Investment allocation horizontal bar chart */}
       <section>
-        <SectionHeader title="Allocation by Tag" />
+        <SectionHeader title="Investment Allocation" />
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <AllocationChart data={tagAllocation} currency={userCurrency} />
+          <p className="text-xs text-gray-400 mb-3">
+            Percentage of total portfolio value
+          </p>
+          <PositionsBarChart
+            data={investmentAllocation}
+            currency={userCurrency}
+          />
         </div>
       </section>
 
@@ -356,6 +599,18 @@ export default function DashboardClient({
             ))}
           </div>
         )}
+      </section>
+
+      {/* Dividend income stacked bar chart */}
+      <section>
+        <SectionHeader title="Dividend Income by Asset" />
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <p className="text-xs text-gray-400 mb-3">Last 24 months</p>
+          <DividendsBarChart
+            data={dividendChartData}
+            currency={userCurrency}
+          />
+        </div>
       </section>
 
       {/* Upcoming dividends */}

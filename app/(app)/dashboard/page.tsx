@@ -14,6 +14,13 @@ interface RawSnapshot {
   total_value_currency: string;
 }
 
+interface RawDividendRow {
+  month: string;
+  asset_name: string;
+  amount: unknown;
+  currency: string;
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -91,26 +98,125 @@ export default async function DashboardPage() {
     0
   );
 
-  const tagAllocationMap = new Map<string, number>();
-  for (const pos of enrichedPositions) {
-    if (pos.tags.length === 0) {
-      const prev = tagAllocationMap.get("Untagged") ?? 0;
-      tagAllocationMap.set("Untagged", prev + pos.currentValue);
-    } else {
-      for (const tag of pos.tags) {
-        const prev = tagAllocationMap.get(tag.name) ?? 0;
-        tagAllocationMap.set(
-          tag.name,
-          prev + pos.currentValue / pos.tags.length
-        );
+  // Fetch portfolios with their tags for per-portfolio pie charts
+  const portfoliosWithTags = await prisma.portfolio.findMany({
+    where: { userId },
+    include: {
+      portfolioTags: {
+        include: { tag: true },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const portfolioCharts = portfoliosWithTags
+    .map((portfolio, index) => {
+      const tagIds = new Set(portfolio.portfolioTags.map((pt) => pt.tagId));
+
+      const tagValues = new Map<string, number>();
+      for (const pos of enrichedPositions) {
+        const matchingTags = pos.tags.filter((t) => tagIds.has(t.id));
+        if (matchingTags.length > 0) {
+          for (const tag of matchingTags) {
+            const prev = tagValues.get(tag.name) ?? 0;
+            tagValues.set(
+              tag.name,
+              prev + pos.currentValue / matchingTags.length
+            );
+          }
+        }
       }
-    }
-  }
-  const tagAllocation = Array.from(tagAllocationMap.entries()).map(
-    ([name, value]) => ({ name, value })
-  );
+
+      const chartData = Array.from(tagValues.entries())
+        .map(([label, value]) => ({ label, value }))
+        .filter((d) => d.value > 0)
+        .sort((a, b) => b.value - a.value);
+
+      return {
+        id: portfolio.id,
+        name: portfolio.name,
+        description: portfolio.description,
+        chartData,
+        colorIndex: index,
+      };
+    })
+    .filter((p) => p.chartData.length > 0);
+
+  // Investment allocation (positions as % of total portfolio)
+  const investmentAllocation = enrichedPositions
+    .map((pos) => ({
+      label: pos.assetName,
+      value: pos.currentValue,
+      percentage:
+        totalPortfolioValue > 0
+          ? parseFloat(
+              ((pos.currentValue / totalPortfolioValue) * 100).toFixed(2)
+            )
+          : 0,
+    }))
+    .filter((d) => d.percentage > 0)
+    .sort((a, b) => b.percentage - a.percentage);
 
   const now = new Date();
+
+  // Dividend chart data: last 24 months of realized dividend income
+  const past24Months = new Date(now);
+  past24Months.setMonth(past24Months.getMonth() - 24);
+
+  const rawDividendRows = await prisma.$queryRaw<RawDividendRow[]>`
+    SELECT
+      TO_CHAR(d.pay_date, 'YYYY-MM') AS month,
+      a.name AS asset_name,
+      SUM((rp.amount).amount) AS amount,
+      TRIM((rp.amount).currency) AS currency
+    FROM realized_profits rp
+    JOIN dividends d ON rp.dividend_id = d.id
+    JOIN assets a ON rp.asset_id = a.id
+    WHERE rp.user_id = ${userId}
+      AND rp.dividend_id IS NOT NULL
+      AND d.pay_date IS NOT NULL
+      AND d.pay_date >= ${past24Months}
+    GROUP BY TO_CHAR(d.pay_date, 'YYYY-MM'), a.name, TRIM((rp.amount).currency)
+    ORDER BY month ASC, a.name ASC
+  `;
+
+  // Convert dividend amounts to user currency
+  const convertedDividendRows = await Promise.all(
+    rawDividendRows.map(async (row) => ({
+      month: row.month,
+      assetName: row.asset_name,
+      value: await convertAmount(
+        parseDecimal(row.amount),
+        row.currency,
+        userCurrency
+      ),
+    }))
+  );
+
+  // Aggregate by month+asset in case of multiple currency rows
+  const dividendAggMap = new Map<string, number>();
+  for (const row of convertedDividendRows) {
+    const key = `${row.month}|||${row.assetName}`;
+    dividendAggMap.set(key, (dividendAggMap.get(key) ?? 0) + row.value);
+  }
+
+  const dividendMonths = [
+    ...new Set(convertedDividendRows.map((r) => r.month)),
+  ].sort();
+  const dividendAssets = [
+    ...new Set(convertedDividendRows.map((r) => r.assetName)),
+  ].sort();
+
+  const dividendChartData = {
+    labels: dividendMonths,
+    datasets: dividendAssets.map((assetName) => ({
+      label: assetName,
+      data: dividendMonths.map(
+        (month) => dividendAggMap.get(`${month}|||${assetName}`) ?? 0
+      ),
+    })),
+  };
+
   const in14Days = new Date(now);
   in14Days.setDate(in14Days.getDate() + 14);
 
@@ -179,7 +285,9 @@ export default async function DashboardPage() {
       positions={serializedPositions}
       totalPortfolioValue={totalPortfolioValue}
       userCurrency={userCurrency}
-      tagAllocation={tagAllocation}
+      portfolioCharts={portfolioCharts}
+      investmentAllocation={investmentAllocation}
+      dividendChartData={dividendChartData}
       upcomingDividends={serializedUpcoming}
       recentDividends={serializedRecent}
       snapshots={serializedSnapshots}
