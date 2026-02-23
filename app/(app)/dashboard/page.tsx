@@ -256,8 +256,8 @@ export default async function DashboardPage() {
       d.pay_date,
       d.value,
       d.currency,
-      SUM((rp.amount).amount)         AS total_amount,
-      TRIM((rp.amount).currency)      AS total_currency
+      SUM((rp.amount).amount)             AS total_amount,
+      MIN(TRIM((rp.amount).currency))     AS total_currency
     FROM dividends d
     JOIN assets a ON d.asset_id = a.id
     LEFT JOIN realized_profits rp
