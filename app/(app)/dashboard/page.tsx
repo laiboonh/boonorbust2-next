@@ -239,7 +239,7 @@ export default async function DashboardPage() {
 
   const upcomingDividends = await prisma.dividend.findMany({
     where: { payDate: { gte: now, lte: in14Days } },
-    include: { asset: { select: { name: true, currency: true } } },
+    include: { asset: { select: { name: true, currency: true, dividendWithholdingTax: true } } },
     orderBy: { payDate: "asc" },
   });
 
@@ -295,7 +295,10 @@ export default async function DashboardPage() {
   const allUpcoming = await Promise.all(
     upcomingDividends.map(async (d) => {
       const qty = positionQtyMap.get(d.assetId) ?? 0;
-      const rawTotal = qty * parseDecimal(d.value);
+      const withholdingTax = d.asset.dividendWithholdingTax
+        ? parseDecimal(d.asset.dividendWithholdingTax)
+        : 0;
+      const rawTotal = qty * parseDecimal(d.value) * (1 - withholdingTax);
       const totalAmount =
         rawTotal > 0
           ? await convertAmount(rawTotal, d.currency, userCurrency)
