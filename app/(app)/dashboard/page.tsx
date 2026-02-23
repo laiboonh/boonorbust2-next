@@ -221,9 +221,9 @@ export default async function DashboardPage() {
   in14Days.setDate(in14Days.getDate() + 14);
 
   const upcomingDividends = await prisma.dividend.findMany({
-    where: { exDate: { gte: now, lte: in14Days } },
+    where: { payDate: { gte: now, lte: in14Days } },
     include: { asset: { select: { name: true, currency: true } } },
-    orderBy: { exDate: "asc" },
+    orderBy: { payDate: "asc" },
   });
 
   const past14Days = new Date(now);

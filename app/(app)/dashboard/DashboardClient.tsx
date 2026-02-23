@@ -3,7 +3,6 @@
 import {
   PieChart,
   Pie,
-  Cell,
   Tooltip,
   ResponsiveContainer,
   BarChart,
@@ -105,25 +104,6 @@ const DIVIDEND_COLORS = [
   "#0d9488", "#0891b2", "#7c3aed", "#d97706", "#db2777",
 ];
 
-// Deterministic color per tag name
-const TAG_CHIP_COLORS = [
-  "bg-emerald-100 text-emerald-800",
-  "bg-sky-100 text-sky-800",
-  "bg-violet-100 text-violet-800",
-  "bg-amber-100 text-amber-800",
-  "bg-pink-100 text-pink-800",
-  "bg-teal-100 text-teal-800",
-  "bg-orange-100 text-orange-800",
-  "bg-indigo-100 text-indigo-800",
-];
-
-function tagChipColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) & 0xffff;
-  }
-  return TAG_CHIP_COLORS[hash % TAG_CHIP_COLORS.length];
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -132,28 +112,6 @@ function SectionHeader({ title }: { title: string }) {
     <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
       {title}
     </h2>
-  );
-}
-
-function TagChip({ name }: { name: string }) {
-  return (
-    <span
-      className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${tagChipColor(name)}`}
-    >
-      {name}
-    </span>
-  );
-}
-
-function PnLBadge({ value, currency }: { value: number; currency: string }) {
-  const positive = value >= 0;
-  return (
-    <span
-      className={`text-xs font-semibold ${positive ? "text-emerald-600" : "text-red-500"}`}
-    >
-      {positive ? "+" : ""}
-      {formatCurrency(value, currency)}
-    </span>
   );
 }
 
@@ -176,7 +134,11 @@ function PortfolioPieChart({
 }) {
   const colors = COLOR_SCHEMES[colorIndex % COLOR_SCHEMES.length];
   const total = data.reduce((s, d) => s + d.value, 0);
-  const chartData = data.map((d) => ({ name: d.label, value: d.value }));
+  const chartData = data.map((d, i) => ({
+    name: d.label,
+    value: d.value,
+    fill: colors[i % colors.length],
+  }));
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -191,15 +153,16 @@ function PortfolioPieChart({
               outerRadius={90}
               paddingAngle={2}
               dataKey="value"
-            >
-              {chartData.map((_, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={colors[index % colors.length]}
-                />
-              ))}
-            </Pie>
+            />
             <Tooltip
+              contentStyle={{
+                backgroundColor: "white",
+                border: "1px solid #e5e7eb",
+                borderRadius: "8px",
+                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+                fontSize: 12,
+              }}
+              allowEscapeViewBox={{ x: true, y: true }}
               formatter={(value) => [
                 formatCurrency(Number(value ?? 0), currency),
                 "Value",
@@ -256,7 +219,7 @@ function PortfolioValueChart({
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={data}
-          margin={{ top: 4, right: 10, left: 0, bottom: 0 }}
+          margin={{ top: 4, right: 10, left: 0, bottom: 40 }}
         >
           <defs>
             <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
@@ -268,8 +231,11 @@ function PortfolioValueChart({
           <XAxis
             dataKey="date"
             tick={{ fontSize: 9 }}
+            angle={-45}
+            textAnchor="end"
             interval="preserveStartEnd"
             tickLine={false}
+            height={50}
           />
           <YAxis
             tickFormatter={(v) => formatCurrency(v, currency)}
@@ -277,6 +243,14 @@ function PortfolioValueChart({
             width={70}
           />
           <Tooltip
+            contentStyle={{
+              backgroundColor: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+              fontSize: 12,
+            }}
+            allowEscapeViewBox={{ x: true, y: true }}
             formatter={(value) => [
               formatCurrency(Number(value), currency),
               "Portfolio Value",
@@ -310,7 +284,15 @@ function PositionsBarChart({
     return <EmptyState message="No positions to chart." />;
   }
 
-  const height = Math.max(150, Math.min(500, data.length * 48));
+  const height = Math.max(150, data.length * 60);
+
+  const tooltipStyle = {
+    backgroundColor: "white",
+    border: "1px solid #e5e7eb",
+    borderRadius: "8px",
+    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+    fontSize: 12,
+  };
 
   return (
     <div style={{ height }}>
@@ -330,10 +312,30 @@ function PositionsBarChart({
           <YAxis
             type="category"
             dataKey="label"
-            width={100}
-            tick={{ fontSize: 10 }}
+            width={120}
+            interval={0}
+            tickLine={false}
+            tick={({ x, y, payload }) => {
+              const label: string = payload.value ?? "";
+              const truncated =
+                label.length > 16 ? label.slice(0, 15) + "…" : label;
+              return (
+                <text
+                  x={x}
+                  y={y}
+                  dy={4}
+                  textAnchor="end"
+                  fontSize={10}
+                  fill="#6b7280"
+                >
+                  {truncated}
+                </text>
+              );
+            }}
           />
           <Tooltip
+            contentStyle={tooltipStyle}
+            allowEscapeViewBox={{ x: true, y: true }}
             formatter={(value, _, props) => {
               const entry = props.payload as AllocationEntry;
               return [
@@ -376,16 +378,31 @@ function DividendsBarChart({
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={chartData}
-          margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
+          margin={{ top: 0, right: 10, left: 0, bottom: 50 }}
         >
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+          <XAxis
+            dataKey="month"
+            tick={{ fontSize: 10 }}
+            angle={-45}
+            textAnchor="end"
+            interval={0}
+            height={60}
+          />
           <YAxis
             tickFormatter={(v) => formatCurrency(v, currency)}
             tick={{ fontSize: 10 }}
             width={70}
           />
           <Tooltip
+            contentStyle={{
+              backgroundColor: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+              fontSize: 12,
+            }}
+            allowEscapeViewBox={{ x: true, y: true }}
             formatter={(value, name) => [
               formatCurrency(Number(value), currency),
               name as string,
@@ -402,76 +419,6 @@ function DividendsBarChart({
           ))}
         </BarChart>
       </ResponsiveContainer>
-    </div>
-  );
-}
-
-// ─── Position card ────────────────────────────────────────────────────────────
-
-function PositionCard({
-  pos,
-  currency,
-}: {
-  pos: Position;
-  currency: string;
-}) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm truncate">
-            {pos.assetName}
-          </p>
-          {pos.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {pos.tags.map((t) => (
-                <TagChip key={t.id} name={t.name} />
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="text-right flex-shrink-0">
-          <p className="font-bold text-emerald-700 text-sm">
-            {formatCurrency(pos.currentValue, currency)}
-          </p>
-          <PnLBadge value={pos.unrealizedProfit} currency={currency} />
-        </div>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
-        <div>
-          <span className="text-gray-400">Avg price</span>
-          <p className="text-gray-700 font-medium">
-            {formatCurrency(pos.convertedAvgPrice, currency)}
-          </p>
-        </div>
-        <div>
-          <span className="text-gray-400">Current price</span>
-          <p className="text-gray-700 font-medium">
-            {formatCurrency(pos.convertedCurrentPrice, currency)}
-          </p>
-        </div>
-        <div>
-          <span className="text-gray-400">Qty on hand</span>
-          <p className="text-gray-700 font-medium">
-            {pos.quantityOnHand.toLocaleString("en-SG", {
-              maximumFractionDigits: 6,
-            })}
-          </p>
-        </div>
-        <div>
-          <span className="text-gray-400">Cost basis</span>
-          <p className="text-gray-700 font-medium">
-            {formatCurrency(pos.convertedAmountOnHand, currency)}
-          </p>
-        </div>
-      </div>
-
-      {pos.priceUpdatedAt && (
-        <p className="mt-2 text-xs text-gray-400">
-          Price updated {pos.priceUpdatedAt}
-        </p>
-      )}
     </div>
   );
 }
@@ -511,7 +458,6 @@ function DividendCard({ div }: { div: DividendEntry }) {
 // ─── Main client component ────────────────────────────────────────────────────
 
 export default function DashboardClient({
-  positions,
   totalPortfolioValue,
   userCurrency,
   portfolioCharts,
@@ -585,20 +531,6 @@ export default function DashboardClient({
             currency={userCurrency}
           />
         </div>
-      </section>
-
-      {/* Positions list */}
-      <section>
-        <SectionHeader title={`Positions (${positions.length})`} />
-        {positions.length === 0 ? (
-          <EmptyState message="No open positions. Add transactions to get started." />
-        ) : (
-          <div className="space-y-3">
-            {positions.map((pos) => (
-              <PositionCard key={pos.id} pos={pos} currency={userCurrency} />
-            ))}
-          </div>
-        )}
       </section>
 
       {/* Dividend income stacked bar chart */}

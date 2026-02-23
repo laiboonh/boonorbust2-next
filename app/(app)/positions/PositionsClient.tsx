@@ -32,6 +32,8 @@ interface PositionRow {
   currentPrice: string | null;
   priceCurrency: string;
   unrealizedProfit: string | null;
+  realizedProfit: string | null;
+  realizedCurrency: string;
   history: HistoryItem[];
 }
 
@@ -71,7 +73,7 @@ function HistoryModal({
 
         {/* Summary strip */}
         <div className="px-5 py-3 bg-emerald-50 shrink-0">
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-2 gap-2 text-center mb-2">
             <div>
               <p className="text-xs text-emerald-700 font-medium">Qty on Hand</p>
               <p className="text-sm font-bold text-gray-800">
@@ -84,6 +86,8 @@ function HistoryModal({
                 {formatCurrency(position.avgPrice, position.avgPriceCurrency)}
               </p>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center">
             <div>
               <p className="text-xs text-emerald-700 font-medium">
                 Unrealized P&amp;L
@@ -103,6 +107,27 @@ function HistoryModal({
                 </p>
               ) : (
                 <p className="text-sm text-gray-400">N/A</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-emerald-700 font-medium">
+                Realized P&amp;L
+              </p>
+              {position.realizedProfit !== null ? (
+                <p
+                  className={`text-sm font-bold ${
+                    parseFloat(position.realizedProfit) >= 0
+                      ? "text-emerald-600"
+                      : "text-red-500"
+                  }`}
+                >
+                  {formatCurrency(
+                    position.realizedProfit,
+                    position.realizedCurrency
+                  )}
+                </p>
+              ) : (
+                <p className="text-sm text-gray-400">—</p>
               )}
             </div>
           </div>
@@ -204,6 +229,11 @@ function PositionCard({
       ? (unrealized / (avgPrice * qty)) * 100
       : null;
 
+  const realized =
+    position.realizedProfit !== null
+      ? parseFloat(position.realizedProfit)
+      : null;
+
   return (
     <button
       onClick={onClick}
@@ -262,6 +292,7 @@ function PositionCard({
 
           {unrealized !== null && (
             <div className="mt-1">
+              <p className="text-xs text-gray-400">Unrealized</p>
               <p
                 className={`text-xs font-bold ${
                   unrealized >= 0 ? "text-emerald-600" : "text-red-500"
@@ -280,6 +311,19 @@ function PositionCard({
                   {unrealizedPct.toFixed(2)}%
                 </p>
               )}
+            </div>
+          )}
+          {realized !== null && (
+            <div className="mt-1">
+              <p className="text-xs text-gray-400">Realized</p>
+              <p
+                className={`text-xs font-bold ${
+                  realized >= 0 ? "text-emerald-600" : "text-red-500"
+                }`}
+              >
+                {realized >= 0 ? "+" : ""}
+                {formatCurrency(realized, position.realizedCurrency)}
+              </p>
             </div>
           )}
         </div>

@@ -145,8 +145,10 @@ export async function getLatestPositions(userId: string): Promise<PositionWithAs
   const seen = new Set<number>();
   const latest: RawPosition[] = [];
   for (const pos of rawPositions) {
-    if (!seen.has(Number(pos.asset_id)) && parseDecimal(pos.quantity_on_hand) > 0) {
-      seen.add(Number(pos.asset_id));
+    const assetId = Number(pos.asset_id);
+    if (seen.has(assetId)) continue;
+    seen.add(assetId);
+    if (parseDecimal(pos.quantity_on_hand) > 0) {
       latest.push(pos);
     }
   }

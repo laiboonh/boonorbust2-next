@@ -23,12 +23,14 @@ export async function POST() {
   const positions = await getLatestPositions(session.user.id);
   let totalValue = 0;
   for (const pos of positions) {
-    const converted = await convertAmount(
-      pos.amountOnHand,
-      pos.amountOnHandCurrency,
+    const currentAssetPrice = pos.asset.price ?? 0;
+    const priceCurrency = pos.asset.priceCurrency ?? pos.asset.currency;
+    const convertedPrice = await convertAmount(
+      currentAssetPrice,
+      priceCurrency,
       targetCurrency
     );
-    totalValue += converted;
+    totalValue += convertedPrice * pos.quantityOnHand;
   }
 
   const today = new Date();

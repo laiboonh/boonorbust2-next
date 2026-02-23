@@ -5,6 +5,12 @@ import { getLatestPositions } from "@/lib/positions";
 import { parseDecimal } from "@/lib/utils";
 import PositionsClient from "./PositionsClient";
 
+interface RawRealizedProfit {
+  asset_id: unknown;
+  realized: unknown;
+  currency: string;
+}
+
 export const dynamic = "force-dynamic";
 
 interface RawHistoryItem {
@@ -68,6 +74,26 @@ export default async function PositionsPage() {
     historyByAsset.get(id)!.push(row);
   }
 
+  // Query total realized profit per asset from sell transactions
+  const rawRealized = await prisma.$queryRaw<RawRealizedProfit[]>`
+    SELECT
+      asset_id,
+      SUM((amount).amount)         AS realized,
+      TRIM((amount).currency)      AS currency
+    FROM realized_profits
+    WHERE user_id = ${userId}
+      AND portfolio_transaction_id IS NOT NULL
+    GROUP BY asset_id, TRIM((amount).currency)
+  `;
+
+  const realizedByAsset = new Map<number, { value: number; currency: string }>();
+  for (const r of rawRealized) {
+    realizedByAsset.set(Number(r.asset_id), {
+      value: parseDecimal(r.realized),
+      currency: r.currency,
+    });
+  }
+
   const enriched = latestPositions.map((pos) => {
     const currentPrice = pos.asset.price;
     const priceCurrency = pos.asset.priceCurrency ?? pos.amountOnHandCurrency;
@@ -75,6 +101,7 @@ export default async function PositionsPage() {
     const qty = pos.quantityOnHand;
     const unrealizedProfit =
       currentPrice !== null ? (currentPrice - avgPrice) * qty : null;
+    const realized = realizedByAsset.get(pos.assetId) ?? null;
 
     const history = (historyByAsset.get(pos.assetId) ?? []).map((h) => ({
       id: Number(h.pp_id),
@@ -103,6 +130,8 @@ export default async function PositionsPage() {
       currentPrice: currentPrice !== null ? currentPrice.toString() : null,
       priceCurrency,
       unrealizedProfit: unrealizedProfit !== null ? unrealizedProfit.toString() : null,
+      realizedProfit: realized ? realized.value.toString() : null,
+      realizedCurrency: realized ? realized.currency : priceCurrency,
       history,
     };
   });
