@@ -2,14 +2,8 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getLatestPositions } from "@/lib/positions";
-import { parseDecimal } from "@/lib/utils";
+import { parseDecimal, formatDate } from "@/lib/utils";
 import PositionsClient from "./PositionsClient";
-
-interface RawRealizedProfit {
-  asset_id: unknown;
-  realized: unknown;
-  currency: string;
-}
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +25,25 @@ interface RawHistoryItem {
   notes: string | null;
 }
 
+interface RawRealizedDetail {
+  id: unknown;
+  asset_id: unknown;
+  portfolio_transaction_id: unknown;
+  dividend_id: unknown;
+  rp_amount: unknown;
+  rp_currency: string;
+  // trade fields
+  transaction_date: Date | null;
+  sell_price: unknown;
+  sell_price_currency: string | null;
+  qty_sold: unknown;
+  // dividend fields
+  ex_date: Date | null;
+  pay_date: Date | null;
+  dividend_per_share: unknown;
+  dividend_currency: string | null;
+}
+
 export default async function PositionsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/");
@@ -41,7 +54,7 @@ export default async function PositionsPage() {
 
   const assetIds = latestPositions.map((p) => p.assetId);
 
-  // Single query for all history across all held assets
+  // History (portfolio positions) for each held asset
   const allHistory = await prisma.$queryRaw<RawHistoryItem[]>`
     SELECT
       pp.id            AS pp_id,
@@ -66,7 +79,6 @@ export default async function PositionsPage() {
     ORDER BY pp.asset_id, pt.transaction_date ASC
   `;
 
-  // Group history by asset_id
   const historyByAsset = new Map<number, RawHistoryItem[]>();
   for (const row of allHistory) {
     const id = Number(row.asset_id);
@@ -74,23 +86,69 @@ export default async function PositionsPage() {
     historyByAsset.get(id)!.push(row);
   }
 
-  // Query total realized profit per asset from sell transactions
-  const rawRealized = await prisma.$queryRaw<RawRealizedProfit[]>`
+  // Detailed realized profits (trades + dividends) for all assets
+  const rawRealized = await prisma.$queryRaw<RawRealizedDetail[]>`
     SELECT
-      asset_id,
-      SUM((amount).amount)         AS realized,
-      TRIM((amount).currency)      AS currency
-    FROM realized_profits
-    WHERE user_id = ${userId}
-      AND portfolio_transaction_id IS NOT NULL
-    GROUP BY asset_id, TRIM((amount).currency)
+      rp.id,
+      rp.asset_id,
+      rp.portfolio_transaction_id,
+      rp.dividend_id,
+      (rp.amount).amount          AS rp_amount,
+      TRIM((rp.amount).currency)  AS rp_currency,
+      pt.transaction_date,
+      (pt.price).amount           AS sell_price,
+      TRIM((pt.price).currency)   AS sell_price_currency,
+      pt.quantity                 AS qty_sold,
+      d.ex_date,
+      d.pay_date,
+      d.value                     AS dividend_per_share,
+      d.currency                  AS dividend_currency
+    FROM realized_profits rp
+    LEFT JOIN portfolio_transactions pt ON rp.portfolio_transaction_id = pt.id
+    LEFT JOIN dividends d ON rp.dividend_id = d.id
+    WHERE rp.user_id = ${userId}
+    ORDER BY rp.asset_id,
+             COALESCE(pt.transaction_date, d.pay_date) DESC NULLS LAST
   `;
 
-  const realizedByAsset = new Map<number, { value: number; currency: string }>();
+  // Group realized details by asset_id
+  const realizedByAsset = new Map<
+    number,
+    Array<{
+      id: number;
+      type: "trade" | "dividend";
+      amount: number;
+      currency: string;
+      // trade
+      tradeDate: string | null;
+      sellPrice: number | null;
+      sellPriceCurrency: string | null;
+      qtySold: number | null;
+      // dividend
+      exDate: string | null;
+      payDate: string | null;
+      dividendPerShare: number | null;
+      dividendCurrency: string | null;
+    }>
+  >();
+
   for (const r of rawRealized) {
-    realizedByAsset.set(Number(r.asset_id), {
-      value: parseDecimal(r.realized),
-      currency: r.currency,
+    const assetId = Number(r.asset_id);
+    if (!realizedByAsset.has(assetId)) realizedByAsset.set(assetId, []);
+    realizedByAsset.get(assetId)!.push({
+      id: Number(r.id),
+      type: r.dividend_id !== null ? "dividend" : "trade",
+      amount: parseDecimal(r.rp_amount),
+      currency: r.rp_currency,
+      tradeDate: r.transaction_date ? formatDate(r.transaction_date) : null,
+      sellPrice: r.sell_price !== null ? parseDecimal(r.sell_price) : null,
+      sellPriceCurrency: r.sell_price_currency,
+      qtySold: r.qty_sold !== null ? parseDecimal(r.qty_sold) : null,
+      exDate: r.ex_date ? formatDate(r.ex_date) : null,
+      payDate: r.pay_date ? formatDate(r.pay_date) : null,
+      dividendPerShare:
+        r.dividend_per_share !== null ? parseDecimal(r.dividend_per_share) : null,
+      dividendCurrency: r.dividend_currency,
     });
   }
 
@@ -101,7 +159,12 @@ export default async function PositionsPage() {
     const qty = pos.quantityOnHand;
     const unrealizedProfit =
       currentPrice !== null ? (currentPrice - avgPrice) * qty : null;
-    const realized = realizedByAsset.get(pos.assetId) ?? null;
+
+    const realizedEntries = realizedByAsset.get(pos.assetId) ?? [];
+    const tradeEntries = realizedEntries.filter((e) => e.type === "trade");
+    const totalRealized = tradeEntries.reduce((s, e) => s + e.amount, 0);
+    const realizedCurrency =
+      tradeEntries[0]?.currency ?? priceCurrency;
 
     const history = (historyByAsset.get(pos.assetId) ?? []).map((h) => ({
       id: Number(h.pp_id),
@@ -130,8 +193,9 @@ export default async function PositionsPage() {
       currentPrice: currentPrice !== null ? currentPrice.toString() : null,
       priceCurrency,
       unrealizedProfit: unrealizedProfit !== null ? unrealizedProfit.toString() : null,
-      realizedProfit: realized ? realized.value.toString() : null,
-      realizedCurrency: realized ? realized.currency : priceCurrency,
+      realizedProfit: tradeEntries.length > 0 ? totalRealized.toString() : null,
+      realizedCurrency,
+      realizedDetails: realizedEntries,
       history,
     };
   });

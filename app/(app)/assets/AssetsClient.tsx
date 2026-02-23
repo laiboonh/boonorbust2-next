@@ -32,9 +32,18 @@ interface Asset {
   tags: Tag[];
 }
 
+interface DividendItem {
+  id: number;
+  exDate: string;
+  payDate: string | null;
+  value: number;
+  currency: string;
+}
+
 interface Props {
   assets: Asset[];
   userId: string;
+  dividendsByAsset: Record<number, DividendItem[]>;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -340,6 +349,93 @@ function DeleteConfirmModal({
   );
 }
 
+// ─── Dividends modal ──────────────────────────────────────────────────────────
+
+function DividendsModal({
+  assetName,
+  dividends,
+  onClose,
+}: {
+  assetName: string;
+  dividends: DividendItem[];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-0 sm:px-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+          <h2 className="text-base font-bold text-gray-900">
+            Dividends — {assetName}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-y-auto flex-1">
+          {dividends.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">
+              No dividend records found.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5">
+                    Ex-Date
+                  </th>
+                  <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5">
+                    Pay Date
+                  </th>
+                  <th className="text-right text-xs font-semibold text-gray-500 px-4 py-2.5">
+                    Value / Share
+                  </th>
+                  <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5">
+                    Currency
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {dividends.map((d) => (
+                  <tr key={d.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-gray-700">{d.exDate}</td>
+                    <td className="px-4 py-2.5 text-gray-500">
+                      {d.payDate ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-medium text-gray-900">
+                      {d.value.toFixed(4)}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-500">{d.currency}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer count */}
+        <div className="px-5 py-3 border-t border-gray-100 flex-shrink-0">
+          <p className="text-xs text-gray-400">
+            {dividends.length} record{dividends.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tag input row ────────────────────────────────────────────────────────────
 
 function AddTagInput({
@@ -399,15 +495,19 @@ function AddTagInput({
 function AssetCard({
   asset,
   userId,
+  dividends,
   onEdit,
   onDelete,
   onRefresh,
+  onShowDividends,
 }: {
   asset: Asset;
   userId: string;
+  dividends: DividendItem[];
   onEdit: (a: Asset) => void;
   onDelete: (a: Asset) => void;
   onRefresh: () => void;
+  onShowDividends: (a: Asset) => void;
 }) {
   const [, startTransition] = useTransition();
 
@@ -434,9 +534,13 @@ function AssetCard({
               {asset.currency}
             </span>
             {asset.distributesDividends && (
-              <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
-                Dividends
-              </span>
+              <button
+                type="button"
+                onClick={() => onShowDividends(asset)}
+                className="text-xs font-medium bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded hover:bg-emerald-200 transition-colors"
+              >
+                Dividends ({dividends.length})
+              </button>
             )}
           </div>
 
@@ -496,12 +600,13 @@ function AssetCard({
 
 // ─── Main client component ────────────────────────────────────────────────────
 
-export default function AssetsClient({ assets, userId }: Props) {
+export default function AssetsClient({ assets, userId, dividendsByAsset }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editAsset, setEditAsset] = useState<Asset | null>(null);
   const [deleteAsset_, setDeleteAsset] = useState<Asset | null>(null);
+  const [dividendsAsset, setDividendsAsset] = useState<Asset | null>(null);
 
   const refresh = useCallback(() => {
     router.refresh();
@@ -602,9 +707,11 @@ export default function AssetsClient({ assets, userId }: Props) {
               key={asset.id}
               asset={asset}
               userId={userId}
+              dividends={dividendsByAsset[asset.id] ?? []}
               onEdit={openEdit}
               onDelete={setDeleteAsset}
               onRefresh={refresh}
+              onShowDividends={setDividendsAsset}
             />
           ))}
         </div>
@@ -625,6 +732,15 @@ export default function AssetsClient({ assets, userId }: Props) {
           asset={deleteAsset_}
           onClose={() => setDeleteAsset(null)}
           onDeleted={refresh}
+        />
+      )}
+
+      {/* Dividends modal */}
+      {dividendsAsset && (
+        <DividendsModal
+          assetName={dividendsAsset.name}
+          dividends={dividendsByAsset[dividendsAsset.id] ?? []}
+          onClose={() => setDividendsAsset(null)}
         />
       )}
     </div>

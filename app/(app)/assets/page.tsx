@@ -27,6 +27,34 @@ export default async function AssetsPage() {
     orderBy: { name: "asc" },
   });
 
+  // Fetch dividends for all assets that distribute dividends
+  const dividendAssetIds = assets
+    .filter((a) => a.distributesDividends)
+    .map((a) => a.id);
+
+  const dividends =
+    dividendAssetIds.length > 0
+      ? await prisma.dividend.findMany({
+          where: { assetId: { in: dividendAssetIds } },
+          orderBy: { exDate: "desc" },
+        })
+      : [];
+
+  const dividendsByAsset: Record<
+    number,
+    { id: number; exDate: string; payDate: string | null; value: number; currency: string }[]
+  > = {};
+  for (const d of dividends) {
+    if (!dividendsByAsset[d.assetId]) dividendsByAsset[d.assetId] = [];
+    dividendsByAsset[d.assetId].push({
+      id: d.id,
+      exDate: formatDate(d.exDate),
+      payDate: d.payDate ? formatDate(d.payDate) : null,
+      value: parseDecimal(d.value),
+      currency: d.currency,
+    });
+  }
+
   // Serialize for client (Decimal -> number, Date -> string)
   const serialized = assets.map((a) => ({
     id: a.id,
@@ -49,6 +77,7 @@ export default async function AssetsPage() {
     <AssetsClient
       assets={serialized}
       userId={userId}
+      dividendsByAsset={dividendsByAsset}
     />
   );
 }
