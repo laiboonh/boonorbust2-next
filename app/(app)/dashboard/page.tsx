@@ -159,9 +159,9 @@ export default async function DashboardPage() {
 
   const now = new Date();
 
-  // Dividend chart data: last 24 months of realized dividend income
-  const past24Months = new Date(now);
-  past24Months.setMonth(past24Months.getMonth() - 24);
+  // Dividend chart data: last 12 months of realized dividend income
+  const past12Months = new Date(now);
+  past12Months.setMonth(past12Months.getMonth() - 12);
 
   const rawDividendRows = await prisma.$queryRaw<RawDividendRow[]>`
     SELECT
@@ -175,7 +175,7 @@ export default async function DashboardPage() {
     WHERE rp.user_id = ${userId}
       AND rp.dividend_id IS NOT NULL
       AND d.pay_date IS NOT NULL
-      AND d.pay_date >= ${past24Months}
+      AND d.pay_date >= ${past12Months}
     GROUP BY TO_CHAR(d.pay_date, 'YYYY-MM'), a.name, TRIM((rp.amount).currency)
     ORDER BY month ASC, a.name ASC
   `;

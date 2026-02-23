@@ -155,6 +155,7 @@ function PortfolioPieChart({
               dataKey="value"
             />
             <Tooltip
+              wrapperStyle={{ zIndex: 9999 }}
               contentStyle={{
                 backgroundColor: "white",
                 border: "1px solid #e5e7eb",
@@ -162,7 +163,6 @@ function PortfolioPieChart({
                 boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
                 fontSize: 12,
               }}
-              allowEscapeViewBox={{ x: true, y: true }}
               formatter={(value) => [
                 formatCurrency(Number(value ?? 0), currency),
                 "Value",
@@ -243,6 +243,7 @@ function PortfolioValueChart({
             width={70}
           />
           <Tooltip
+            wrapperStyle={{ zIndex: 9999 }}
             contentStyle={{
               backgroundColor: "white",
               border: "1px solid #e5e7eb",
@@ -250,7 +251,6 @@ function PortfolioValueChart({
               boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
               fontSize: 12,
             }}
-            allowEscapeViewBox={{ x: true, y: true }}
             formatter={(value) => [
               formatCurrency(Number(value), currency),
               "Portfolio Value",
@@ -334,8 +334,8 @@ function PositionsBarChart({
             }}
           />
           <Tooltip
+            wrapperStyle={{ zIndex: 9999 }}
             contentStyle={tooltipStyle}
-            allowEscapeViewBox={{ x: true, y: true }}
             formatter={(value, _, props) => {
               const entry = props.payload as AllocationEntry;
               return [
@@ -395,6 +395,7 @@ function DividendsBarChart({
             width={70}
           />
           <Tooltip
+            wrapperStyle={{ zIndex: 9999 }}
             contentStyle={{
               backgroundColor: "white",
               border: "1px solid #e5e7eb",
@@ -402,7 +403,6 @@ function DividendsBarChart({
               boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
               fontSize: 12,
             }}
-            allowEscapeViewBox={{ x: true, y: true }}
             formatter={(value, name) => [
               formatCurrency(Number(value), currency),
               name as string,
@@ -537,7 +537,7 @@ export default function DashboardClient({
       <section>
         <SectionHeader title="Dividend Income by Asset" />
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 mb-3">Last 24 months</p>
+          <p className="text-xs text-gray-400 mb-3">Last 12 months</p>
           <DividendsBarChart
             data={dividendChartData}
             currency={userCurrency}
