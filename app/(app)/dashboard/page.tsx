@@ -14,6 +14,18 @@ interface RawSnapshot {
   total_value_currency: string;
 }
 
+interface RawRecentDividend {
+  id: unknown;
+  asset_name: string;
+  asset_currency: string;
+  ex_date: Date;
+  pay_date: Date | null;
+  value: unknown;
+  currency: string;
+  total_amount: unknown;
+  total_currency: string | null;
+}
+
 interface RawDividendRow {
   month: string;
   asset_name: string;
@@ -220,6 +232,11 @@ export default async function DashboardPage() {
   const in14Days = new Date(now);
   in14Days.setDate(in14Days.getDate() + 14);
 
+  // Map assetId → current qty for estimating upcoming dividend totals
+  const positionQtyMap = new Map<number, number>(
+    rawPositions.map((p) => [p.assetId, p.quantityOnHand])
+  );
+
   const upcomingDividends = await prisma.dividend.findMany({
     where: { payDate: { gte: now, lte: in14Days } },
     include: { asset: { select: { name: true, currency: true } } },
@@ -229,11 +246,26 @@ export default async function DashboardPage() {
   const past14Days = new Date(now);
   past14Days.setDate(past14Days.getDate() - 14);
 
-  const recentDividends = await prisma.dividend.findMany({
-    where: { payDate: { gte: past14Days, lte: now } },
-    include: { asset: { select: { name: true, currency: true } } },
-    orderBy: { payDate: "desc" },
-  });
+  // Recent dividends joined with realized_profits to get actual total payout
+  const rawRecentDividends = await prisma.$queryRaw<RawRecentDividend[]>`
+    SELECT
+      d.id,
+      a.name        AS asset_name,
+      a.currency    AS asset_currency,
+      d.ex_date,
+      d.pay_date,
+      d.value,
+      d.currency,
+      SUM((rp.amount).amount)         AS total_amount,
+      TRIM((rp.amount).currency)      AS total_currency
+    FROM dividends d
+    JOIN assets a ON d.asset_id = a.id
+    LEFT JOIN realized_profits rp
+      ON rp.dividend_id = d.id AND rp.user_id = ${userId}
+    WHERE d.pay_date >= ${past14Days} AND d.pay_date <= ${now}
+    GROUP BY d.id, a.name, a.currency, d.ex_date, d.pay_date, d.value, d.currency
+    ORDER BY d.pay_date DESC
+  `;
 
   const past90Days = new Date(now);
   past90Days.setDate(past90Days.getDate() - 90);
@@ -260,25 +292,53 @@ export default async function DashboardPage() {
     tags: p.tags.map((t) => ({ id: t.id, name: t.name })),
   }));
 
-  const serializedUpcoming = upcomingDividends.map((d) => ({
-    id: d.id,
-    assetName: d.asset.name,
-    assetCurrency: d.asset.currency,
-    exDate: formatDate(d.exDate),
-    payDate: d.payDate ? formatDate(d.payDate) : null,
-    value: parseDecimal(d.value),
-    currency: d.currency,
-  }));
+  const allUpcoming = await Promise.all(
+    upcomingDividends.map(async (d) => {
+      const qty = positionQtyMap.get(d.assetId) ?? 0;
+      const rawTotal = qty * parseDecimal(d.value);
+      const totalAmount =
+        rawTotal > 0
+          ? await convertAmount(rawTotal, d.currency, userCurrency)
+          : null;
+      return {
+        id: d.id,
+        assetName: d.asset.name,
+        assetCurrency: d.asset.currency,
+        exDate: formatDate(d.exDate),
+        payDate: d.payDate ? formatDate(d.payDate) : null,
+        value: parseDecimal(d.value),
+        currency: d.currency,
+        totalAmount,
+      };
+    })
+  );
+  const serializedUpcoming = allUpcoming.filter((d) => d.totalAmount !== null);
 
-  const serializedRecent = recentDividends.map((d) => ({
-    id: d.id,
-    assetName: d.asset.name,
-    assetCurrency: d.asset.currency,
-    exDate: formatDate(d.exDate),
-    payDate: d.payDate ? formatDate(d.payDate) : null,
-    value: parseDecimal(d.value),
-    currency: d.currency,
-  }));
+  const allRecent = await Promise.all(
+    rawRecentDividends.map(async (d) => {
+      const rawTotal =
+        d.total_amount !== null ? parseDecimal(d.total_amount) : null;
+      const totalAmount =
+        rawTotal !== null && rawTotal > 0
+          ? await convertAmount(
+              rawTotal,
+              d.total_currency ?? d.currency,
+              userCurrency
+            )
+          : null;
+      return {
+        id: Number(d.id),
+        assetName: d.asset_name,
+        assetCurrency: d.asset_currency,
+        exDate: formatDate(d.ex_date),
+        payDate: d.pay_date ? formatDate(d.pay_date) : null,
+        value: parseDecimal(d.value),
+        currency: d.currency,
+        totalAmount,
+      };
+    })
+  );
+  const serializedRecent = allRecent.filter((d) => d.totalAmount !== null);
 
   return (
     <DashboardClient

@@ -68,6 +68,7 @@ interface DividendEntry {
   payDate: string | null;
   value: number;
   currency: string;
+  totalAmount: number | null;
 }
 
 interface Snapshot {
@@ -425,7 +426,13 @@ function DividendsBarChart({
 
 // ─── Dividend card ────────────────────────────────────────────────────────────
 
-function DividendCard({ div }: { div: DividendEntry }) {
+function DividendCard({
+  div,
+  userCurrency,
+}: {
+  div: DividendEntry;
+  userCurrency: string;
+}) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between gap-2">
       <div className="flex-1 min-w-0">
@@ -446,10 +453,23 @@ function DividendCard({ div }: { div: DividendEntry }) {
         </div>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className="text-sm font-bold text-emerald-700">
-          {formatCurrency(div.value, div.currency)}
-        </p>
-        <p className="text-xs text-gray-400">{div.currency}</p>
+        {div.totalAmount !== null ? (
+          <>
+            <p className="text-sm font-bold text-emerald-700">
+              {formatCurrency(div.totalAmount, userCurrency)}
+            </p>
+            <p className="text-xs text-gray-400">
+              {div.value.toFixed(4)} / share
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-bold text-emerald-700">
+              {formatCurrency(div.value, div.currency)}
+            </p>
+            <p className="text-xs text-gray-400">per share</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -553,7 +573,7 @@ export default function DashboardClient({
         ) : (
           <div className="space-y-3">
             {upcomingDividends.map((d) => (
-              <DividendCard key={d.id} div={d} />
+              <DividendCard key={d.id} div={d} userCurrency={userCurrency} />
             ))}
           </div>
         )}
@@ -567,7 +587,7 @@ export default function DashboardClient({
         ) : (
           <div className="space-y-3">
             {recentDividends.map((d) => (
-              <DividendCard key={d.id} div={d} />
+              <DividendCard key={d.id} div={d} userCurrency={userCurrency} />
             ))}
           </div>
         )}
